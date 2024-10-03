@@ -1,5 +1,6 @@
 import os
 import sys
+
 os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow
@@ -8,15 +9,12 @@ gpus = tensorflow.config.list_physical_devices('GPU')
 for gpu in gpus:
     tensorflow.config.experimental.set_memory_growth(gpu, True)
 
-
 from pathlib import Path
-from prepare import get_filter_zone_ver_stripes, prepare_one_slice
 import cuda_decon
 
 # Import
 folder = sys.argv[1]
 files = Path(folder).rglob('*.ome.tif')
-
 
 parameters = {
     'background': "median",
