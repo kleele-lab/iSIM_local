@@ -1,0 +1,8 @@
+flowdec
+matplotlib
+opencv-python
+scikit-image
+tensorflow==2.10
+tifffile
+tqdm
+xmltodict
