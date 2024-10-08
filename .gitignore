@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pylintrc
+isimgui-venv
+isimgui.code-workspace
+*egg-info/
+Tests
+.vscode
+isim
+.venv/
+**/*.egg-info/
+*.out
+/local_env
+.idea/
