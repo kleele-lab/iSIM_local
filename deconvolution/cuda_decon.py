@@ -15,7 +15,7 @@ import xmltodict
 # from dicttoxml import dicttoxml
 from tqdm import tqdm
 from typing import Union
-# import json
+import json
 # from PIL import Image
 
 import uuid
@@ -322,9 +322,17 @@ def decon_ome_stack(file_dir, params=None):
     out_file_tiff = out_file[0] + ".".join(["_decon", *out_file[1:]])
 
     # UUID = uuid.uuid1()
+    print('file_dir', file_dir)
+    print(out_file)
+    print(file_dir.split('.'))
 
+    filename = str(file_dir.split('.ome.tif')[0]) + '_metadata.txt'
+    f_metadata = open(filename, 'r')
+    #metadata_text = f_metadata.read()
+    metadata_json=json.load(f_metadata)
     # Naive attempt to save as tiff
-    io.imsave(os.path.join(os.path.dirname(file_dir), out_file_tiff), decon)
+    f_metadata.close()
+    io.imsave(os.path.join(os.path.dirname(file_dir), out_file_tiff), decon, metadata=metadata_json)
 
     # Get metadata to transfer
 
