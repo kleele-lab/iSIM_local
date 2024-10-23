@@ -2,25 +2,27 @@ from typing import Tuple, Callable
 from flowdec import data as fd_data
 from flowdec import restoration as fd_restoration
 from skimage import io
+from skimage import restoration
 from scipy import ndimage
 import numpy as np
 from prepare import prepare_decon, get_filter_zone
 from dataclasses import dataclass
-import tensorflow as tf
-import h5py as h
+# import tensorflow as tf
+# import h5py as h
 
 import tifffile
 import xmltodict
-from dicttoxml import dicttoxml
+# from dicttoxml import dicttoxml
 from tqdm import tqdm
 from typing import Union
-import json
-from PIL import Image
+# import json
+# from PIL import Image
 
 import uuid
-import time
+# import time
 import os
-import pdb
+
+# import pdb
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 # os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = 'platform'
@@ -121,8 +123,8 @@ def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
     return kernel
 
 
-def init_algo(image):
-    return fd_restoration.RichardsonLucyDeconvolver(image.ndim).initialize()
+# def init_algo(image):
+#     return fd_restoration.RichardsonLucyDeconvolver(image.ndim).initialize()
 
 
 def decon_ome_stack(file_dir, params=None):
@@ -157,8 +159,8 @@ def decon_ome_stack(file_dir, params=None):
         size_c = 1
 
         z_step = 0.2
-    print(size_t, size_z, size_c)
-    print(dim_order)
+    print("\n Sizes : ", size_t, size_z, size_c)
+    print("Dim_order: ", dim_order)
 
     ndim = 2 if size_z == 1 else 3
     # Make standardized array with all dimensions
@@ -237,7 +239,13 @@ def decon_ome_stack(file_dir, params=None):
                 if ndim == 3:
                     padding = (data_c.shape[0] - params.kernel['kernel'].shape[0]) // 2
                     params.kernel['kernel'] = np.pad(params.kernel['kernel'], ((padding, padding), (0, 0), (0, 0)))
-                decon[timepoint, :, channel, :, :] = richardson_lucy(data_c, params=params)
+                data_c = data_c / 255.
+                decon[timepoint, :, channel, :, :] = 255. * restoration.richardson_lucy(data_c,
+                                                                                        psf=params.kernel['kernel'],
+                                                                                        num_iter=5)  #
+
+                # decon[timepoint, :, channel, :, :] = richardson_lucy(data_c, params=params)
+
             else:
                 old_kernel_shape = params.kernel['kernel'].shape
                 kernel_shape = None
@@ -246,9 +254,15 @@ def decon_ome_stack(file_dir, params=None):
                     kernel_shape = [slices[1] - slices[0], *data_here.shape[-2:]]
                     if idx == 0:
                         # print("0 to ", slices[1]-OVERLAP//2)
-                        decon[timepoint, 0:slices[1] - OVERLAP // 2, channel, :, :] = richardson_lucy(data_here,
-                                                                                                      params=params)[
-                                                                                      0:slices[1] - OVERLAP // 2, :, :]
+                        # decon[timepoint, 0:slices[1] - OVERLAP // 2, channel, :, :] = richardson_lucy(data_here,
+                        #                                                                               params=params)[
+                        #                                                               0:slices[1] - OVERLAP // 2, :, :]
+                        data_here = data_here / 255.
+                        decon[timepoint, 0:slices[1] - OVERLAP // 2, channel, :,
+                        :] = 255. * restoration.richardson_lucy(data_here,
+                                                                psf=params.kernel[
+                                                                    'kernel'],
+                                                                num_iter=5)
                     elif slices[1] == size_z:
                         # print(slices[0]+OVERLAP//2, " to ", size_z)
                         if params.kernel['kernel'].shape[0] != kernel_shape[0]:
@@ -258,14 +272,22 @@ def decon_ome_stack(file_dir, params=None):
                             print(params.kernel['kernel'].shape[0], " and ", kernel_shape[0])
                             print(padding)
                         # params = CudaParams(background=background, shape=kernel_shape, ndim=ndim, z_step=z_step)
-                        decon[timepoint, slices[0] + OVERLAP // 2:slices[1], channel, :, :] = richardson_lucy(data_here,
-                                                                                                              params=params)[
-                                                                                              OVERLAP // 2:, :, :]
+                        data_c = data_c / 255.
+                        decon[timepoint,
+                        slices[0] + OVERLAP // 2:slices[1],
+                        channel, :, :] = 255. * restoration.richardson_lucy(data_c, psf=params.kernel['kernel'])[
+                                                # richardson_lucy(data_here,
+                                                # params=params)[
+                                                OVERLAP // 2:, :, :]
                     else:
                         # print(slices[0]+OVERLAP//2, " to ", slices[1]-OVERLAP//2)
-                        decon[timepoint, slices[0] + OVERLAP // 2:slices[1] - OVERLAP // 2, channel, :,
-                        :] = richardson_lucy(data_here, params=params)[OVERLAP // 2:-OVERLAP // 2, :, :]
-                    old_kernel_shape = kernel_shape
+                        data_c = data_c / 255.
+                        decon[timepoint,
+                        slices[0] + OVERLAP // 2:slices[1] - OVERLAP // 2,
+                        channel, :, :] = 255. * restoration.richardson_lucy(data_c, psf=params.kernel['kernel'])[
+                                                OVERLAP // 2:-OVERLAP // 2, :, :]
+                    # richardson_lucy(data_here, params=params)[OVERLAP // 2:-OVERLAP // 2, :, :]
+                    # old_kernel_shape = kernel_shape
 
     # Crop the data back if we padded it
     if original_size_data != decon.shape:
@@ -299,7 +321,7 @@ def decon_ome_stack(file_dir, params=None):
     out_file = os.path.basename(file_dir).rsplit('.', 2)
     out_file_tiff = out_file[0] + ".".join(["_decon", *out_file[1:]])
 
-    UUID = uuid.uuid1()
+    # UUID = uuid.uuid1()
 
     # Naive attempt to save as tiff
     io.imsave(os.path.join(os.path.dirname(file_dir), out_file_tiff), decon)
@@ -351,23 +373,23 @@ def decon_ome_stack(file_dir, params=None):
 #     tif.write(decon, description=mdInfo)
 
 
-def decon_one_frame(file_dir, params=None):
-    image = tifffile.imread(file_dir)
-
-    if params is None:
-        params = {'background': 'median'}
-
-    # image = cv2.GaussianBlur(image, (0, 0), 1)
-    print("Image shape for decon", image.shape)
-    kernel_shape = image.shape
-    ndim = 2
-    params = CudaParams(background=params['background'], shape=kernel_shape, ndim=ndim)
-    decon = richardson_lucy(image, params=params)
-
-    out_file = os.path.basename(file_dir).rsplit('.', 2)
-    out_file = out_file[0] + ".".join(["_decon", *out_file[1:]])
-
-    tifffile.imwrite(os.path.join(os.path.dirname(file_dir), out_file), decon)
+# def decon_one_frame(file_dir, params=None):
+#     image = tifffile.imread(file_dir)
+#
+#     if params is None:
+#         params = {'background': 'median'}
+#
+#     # image = cv2.GaussianBlur(image, (0, 0), 1)
+#     print("Image shape for decon", image.shape)
+#     kernel_shape = image.shape
+#     ndim = 2
+#     params = CudaParams(background=params['background'], shape=kernel_shape, ndim=ndim)
+#     decon = richardson_lucy(image, params=params)
+#
+#     out_file = os.path.basename(file_dir).rsplit('.', 2)
+#     out_file = out_file[0] + ".".join(["_decon", *out_file[1:]])
+#
+#     tifffile.imwrite(os.path.join(os.path.dirname(file_dir), out_file), decon)
 
 
 def get_overlapping_slices(total_slices, slice_step, overlap):
@@ -381,6 +403,5 @@ def get_overlapping_slices(total_slices, slice_step, overlap):
         slice_now = slice_now + slice_step
     return my_bins
 
-
-if __name__ == '__main__':
-    main()
+# if __name__ == '__main__':
+#     main()
