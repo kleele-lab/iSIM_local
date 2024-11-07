@@ -7,8 +7,7 @@ from scipy import ndimage
 import numpy as np
 from prepare import prepare_decon, get_filter_zone
 from dataclasses import dataclass
-# import tensorflow as tf
-# import h5py as h
+import matplotlib.pyplot as plt
 
 import tifffile
 import xmltodict
@@ -22,7 +21,7 @@ import uuid
 # import time
 import os
 
-# import pdb
+import pdb
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 # os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = 'platform'
@@ -59,6 +58,7 @@ class Params():
     z_step: float = 0.2
     background: Union[int, str] = 'median'
     after_gaussian: float = 2
+    kernel = None
 
     def to_dict(self):
         class_dict = {'sigma': self.sigma,
@@ -76,7 +76,9 @@ def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
         print("3D images, sigma: ", sigma)
 
     size = image.shape
+    print("=====", size)
     size = [min([17, x]) for x in size]
+    print("=====", size)
 
     # If even size dimensions crop to have a center pixel
     kernel = {'kernel': np.zeros(size, dtype=float),
@@ -92,8 +94,11 @@ def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
 def decon_ome_stack(file_dir, params=None):
     data = None
     params = Params()
-    with tifffile.TiffFile(file_dir) as tif:  # , is_mmstack=False, is_ome=True
+    with tifffile.TiffFile(file_dir) as tif:# , is_mmstack=False, is_ome=True
+        assert tif.is_imagej
         imagej_metadata = tif.imagej_metadata
+
+
         my_dict = xmltodict.parse(tif.ome_metadata, force_list={'Plane'})
         size_t = int(my_dict['OME']['Image']["Pixels"]["@SizeT"])
         size_z = int(my_dict['OME']['Image']["Pixels"]["@SizeZ"])
@@ -163,7 +168,7 @@ def decon_ome_stack(file_dir, params=None):
     if params is None:
         background = 100
     else:
-        background = params['background']
+        background = params.background
 
     my_slices = None
     decon = np.empty_like(data)
@@ -175,63 +180,23 @@ def decon_ome_stack(file_dir, params=None):
                 data_c = data_c[0, :, :]
 
             if my_slices is None:
-                if ndim == 3:
-                    padding = (data_c.shape[0] - params.kernel['kernel'].shape[0]) // 2
-                    params.kernel['kernel'] = np.pad(params.kernel['kernel'], ((padding, padding), (0, 0), (0, 0)))
-                data_c = data_c / 255.
-                decon[timepoint, :, channel, :, :] = 255. * restoration.richardson_lucy(data_c,
-                                                                                        psf=params.kernel['kernel'],
-                                                                                        num_iter=5)  #
+                # if ndim == 3:
 
+                # padding = (data_c.shape[0] - params.kernel['kernel'].shape[0]) // 2
+                # params.kernel['kernel'] = np.pad(params.kernel['kernel'], ((padding, padding), (0, 0), (0, 0)))
 
+                print("---", data_c.shape)
 
+                for ij in range(0, data_c.shape[0]):
+                    params.kernel = make_kernel(image=data_c[ij, :, :], sigma=params.sigma, z_step=params.z_step)
+                    maxval_slice = np.max(data_c[ij, :, :])
+                    result = restoration.richardson_lucy(data_c[ij, :, :] / maxval_slice,
+                                                         psf=params.kernel['kernel'],
+                                                         num_iter=30)  #
+                    # plt.imshow(result, vmin=result.min(), vmax=result.max())
+                    decon[timepoint, ij, channel, :, :] = result * maxval_slice
 
-
-
-            else:
-                old_kernel_shape = params.kernel['kernel'].shape
-                kernel_shape = None
-                for idx, slices in enumerate(tqdm(my_slices)):
-                    data_here = data_c[slices[0]:slices[1], :, :]
-                    kernel_shape = [slices[1] - slices[0], *data_here.shape[-2:]]
-                    if idx == 0:
-                        # print("0 to ", slices[1]-OVERLAP//2)
-                        # decon[timepoint, 0:slices[1] - OVERLAP // 2, channel, :, :] = richardson_lucy(data_here,
-                        #                                                                               params=params)[
-                        #                                                               0:slices[1] - OVERLAP // 2, :, :]
-                        data_here = data_here / 255.
-                        decon[timepoint, 0:slices[1] - OVERLAP // 2, channel, :,
-                        :] = 255. * restoration.richardson_lucy(data_here,
-                                                                psf=params.kernel[
-                                                                    'kernel'],
-                                                                num_iter=5)
-                    elif slices[1] == size_z:
-                        # print(slices[0]+OVERLAP//2, " to ", size_z)
-                        if params.kernel['kernel'].shape[0] != kernel_shape[0]:
-                            padding = (params.kernel['kernel'].shape[0] - kernel_shape[0] + 1) // 2
-                            if padding > 0:
-                                params.kernel['kernel'] = params.kernel['kernel'][padding + 1:-padding]
-                            print(params.kernel['kernel'].shape[0], " and ", kernel_shape[0])
-                            print(padding)
-                        # params = CudaParams(background=background, shape=kernel_shape, ndim=ndim, z_step=z_step)
-                        data_c = data_c / 255.
-                        decon[timepoint,
-                        slices[0] + OVERLAP // 2:slices[1],
-                        channel, :, :] = 255. * restoration.richardson_lucy(data_c, psf=params.kernel['kernel'],
-                                                                            num_iter=5)[
-                                                # richardson_lucy(data_here,
-                                                # params=params)[
-                                                OVERLAP // 2:, :, :]
-                    else:
-                        # print(slices[0]+OVERLAP//2, " to ", slices[1]-OVERLAP//2)
-                        data_c = data_c / 255.
-                        decon[timepoint,
-                        slices[0] + OVERLAP // 2:slices[1] - OVERLAP // 2,
-                        channel, :, :] = 255. * restoration.richardson_lucy(data_c, psf=params.kernel['kernel'],
-                                                                            num_iter=5)[
-                                                OVERLAP // 2:-OVERLAP // 2, :, :]
-                    # richardson_lucy(data_here, params=params)[OVERLAP // 2:-OVERLAP // 2, :, :]
-                    # old_kernel_shape = kernel_shape
+                    # pdb.set_trace()
 
     # Crop the data back if we padded it
     if original_size_data != decon.shape:
@@ -266,9 +231,6 @@ def decon_ome_stack(file_dir, params=None):
     out_file_tiff = out_file[0] + ".".join(["_decon", *out_file[1:]])
 
     # UUID = uuid.uuid1()
-    print('file_dir', file_dir)
-    print(out_file)
-    print(file_dir.split('.'))
 
     filename = str(file_dir.split('.ome.tif')[0]) + '_metadata.txt'
     f_metadata = open(filename, 'r')
@@ -277,6 +239,7 @@ def decon_ome_stack(file_dir, params=None):
     # Naive attempt to save as tiff
     f_metadata.close()
     io.imsave(os.path.join(os.path.dirname(file_dir), out_file_tiff), decon, metadata=imagej_metadata)
+
 
     # Get metadata to transfer
 
