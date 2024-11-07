@@ -26,30 +26,8 @@ import pdb
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 # os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = 'platform'
 
-
 SIZE_LIMIT = 100_000_000
 OVERLAP = 6
-
-
-# def main():
-#     from Analysis.tools import get_files
-#     folder = '/nfs/nas22/fs2202/biol_bc_kleele_2/Joshua/240119_RPE1_Torin_Mdivi_MFI8_iSIM/18h'
-#     files, _ = get_files(folder)
-#
-#     algo = fd_restoration.RichardsonLucyDeconvolver(2).initialize()
-#     kernel = make_kernel(io.imread(files['network'][0]), sigma=3.9/2.355)
-#     for struct_file in files['network']:
-#         struct_img = io.imread(struct_file)
-#         _, axs = plt.subplots(1, 2)
-#         # axs[0].imshow(struct_img)
-#         t0 = time.perf_counter()
-#         struct_img = prepare_decon(struct_img)
-#         img = richardson_lucy(struct_img, algo=algo, kernel=kernel).astype(np.uint16)
-#         print(time.perf_counter()-t0)
-#         axs[0].imshow(struct_img.astype(np.uint16))
-#         axs[1].imshow(img)
-#         # plt.show()
-
 
 @dataclass
 class Params():
@@ -76,9 +54,7 @@ def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
         print("3D images, sigma: ", sigma)
 
     size = image.shape
-    print("=====", size)
     size = [min([17, x]) for x in size]
-    print("=====", size)
 
     # If even size dimensions crop to have a center pixel
     kernel = {'kernel': np.zeros(size, dtype=float),
@@ -184,17 +160,15 @@ def decon_ome_stack(file_dir, params=None):
 
                 # padding = (data_c.shape[0] - params.kernel['kernel'].shape[0]) // 2
                 # params.kernel['kernel'] = np.pad(params.kernel['kernel'], ((padding, padding), (0, 0), (0, 0)))
-
-                print("---", data_c.shape)
-
-                for ij in range(0, data_c.shape[0]):
-                    params.kernel = make_kernel(image=data_c[ij, :, :], sigma=params.sigma, z_step=params.z_step)
-                    maxval_slice = np.max(data_c[ij, :, :])
-                    result = restoration.richardson_lucy(data_c[ij, :, :] / maxval_slice,
+                params.kernel = make_kernel(image=data_c[0, :, :], sigma=params.sigma, z_step=params.z_step)
+                for z_i in tqdm( range(0, data_c.shape[0]) ):
+                #for ij in range(0, data_c.shape[0]):
+                    maxval_slice = np.max(data_c[z_i, :, :])
+                    result = restoration.richardson_lucy(data_c[z_i, :, :] / maxval_slice,
                                                          psf=params.kernel['kernel'],
                                                          num_iter=30)  #
                     # plt.imshow(result, vmin=result.min(), vmax=result.max())
-                    decon[timepoint, ij, channel, :, :] = result * maxval_slice
+                    decon[timepoint, z_i, channel, :, :] = result * maxval_slice
 
                     # pdb.set_trace()
 
@@ -204,6 +178,10 @@ def decon_ome_stack(file_dir, params=None):
     if original_size_data != decon.shape:
         decon = np.pad(decon, pad)
     print("DECON SHAPE ", decon.shape)
+
+
+
+
 
     # Swap axes back
     # print("DECON", decon.shape)
@@ -230,77 +208,20 @@ def decon_ome_stack(file_dir, params=None):
     out_file = os.path.basename(file_dir).rsplit('.', 2)
     out_file_tiff = out_file[0] + ".".join(["_decon", *out_file[1:]])
 
-    # UUID = uuid.uuid1()
+    # filename = str(file_dir.split('.ome.tif')[0]) + '_metadata.txt'
+    # f_metadata = open(filename, 'r')
+    # # metadata_text = f_metadata.read()
+    # metadata_json = json.load(f_metadata)
+    #
+    # f_metadata.close()
 
-    filename = str(file_dir.split('.ome.tif')[0]) + '_metadata.txt'
-    f_metadata = open(filename, 'r')
-    # metadata_text = f_metadata.read()
-    metadata_json = json.load(f_metadata)
-    # Naive attempt to save as tiff
-    f_metadata.close()
-    io.imsave(os.path.join(os.path.dirname(file_dir), out_file_tiff), decon, metadata=imagej_metadata)
+    with tifffile.TiffWriter(os.path.join(os.path.dirname(file_dir), out_file_tiff), imagej=True) as dst:
+        for decon_one in decon:
+            frame = decon_one
+            dst.write(
+                frame,
+                contiguous=True,
+                metadata=imagej_metadata,
+            )
 
-
-    # Get metadata to transfer
-
-#    with tifffile.TiffReader(file_dir) as reader:
-#        mdInfo = xmltodict.parse(reader.ome_metadata)
-#        #mdInfo['OME']['Image']["Pixels"]["@DimensionOrder"] = "XYZCT"
-#        mdInfo['OME']['Image']['@Name'] = os.path.basename(out_file).split('.')[0]     
-#        for frame_tiffdata in mdInfo['OME']['Image']['Pixels']['TiffData']:
-#            frame_tiffdata['UUID']['@FileName'] = os.path.basename(out_file)
-#            frame_tiffdata['UUID']['#text'] =  'urn:uuid:' + str(UUID)
-
-#    with tifffile.TiffWriter(os.path.join(os.path.dirname(file_dir), out_file_tiff), byteorder='<', ome=True) as tif: 
-#        tif.ome_metadata = old_metadata
-#        tif.write(decon, 
-#                photometric='minisblack', 
-#                rowsperstrip=1532, 
-#                bitspersample=16, 
-#                compression='None', 
-#                resolution=(219780, 219780, 'CENTIMETER'),
-#                metadata=imagej_metadata #{'ImageJ':'1.51s','axes':'TZCYX', 'mode':'composite', 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0)}, #,'LUTs': imagej_metadata['LUTs'], 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) }, #'spacing': 0.1499999999999999, 'unit': 'um','Ranges': (190.0, 18780.0, 188.0, 1387.0), 'IJMetadataByteCounts': (28, 2116, 32, 768, 768) },
-#                extratags=[(50838,'int',5,(28, 2116, 32, 768, 768),True),
-#                    (5089,'str',None,imagej_metadata,True),
-#                    (279,'int', 2,(6556960,),True),
-#                    (286,'float',1, 12342.2, True),
-#                    (287,'float',1, -6171.9, True),
-#                    (286,'float',1, 12342.2, True)
-#                    ]
-#                )
-
-### Commented out due to working io.imsave as ome-TIFF above -> saving data storage
-# hf = h.File(os.path.join(os.path.dirname(file_dir), out_file[0] + "_decon.h5"), 'w')
-# hf.create_dataset('data',data=decon)
-# hf.close()
-
-# Write metadata to the prepared file
-#    my_mdInfo = xmltodict.unparse(mdInfo).encode(encoding='UTF-8', errors='strict')
-#    tifffile.tiffcomment(os.path.join(os.path.dirname(file_dir), out_file), comment=imagej_metadata) # my_mdInfo)
-
-# with tifffile.TiffWriter(os.path.join(os.path.dirname(file_dir), out_file), bigtiff=True) as tif:
-#     with tifffile.TiffReader(file_dir) as reader:
-#         mdInfo = xmltodict.parse(reader.ome_metadata)
-#         for frame_tiffdata in mdInfo['OME']['Image']['Pixels']['TiffData']:
-#             frame_tiffdata['UUID']['@FileName'] = os.path.basename(out_file)
-#         mdInfo = xmltodict.unparse(mdInfo).encode(encoding='UTF-8', errors='strict')
-#     tif.write(decon, description=mdInfo)
-
-
-# def decon_one_frame(file_dir, params=None):
-#     image = tifffile.imread(file_dir)
-#
-#     if params is None:
-#         params = {'background': 'median'}
-#
-#     # image = cv2.GaussianBlur(image, (0, 0), 1)
-#     print("Image shape for decon", image.shape)
-#     kernel_shape = image.shape
-#     ndim = 2
-#     params = CudaParams(background=params['background'], shape=kernel_shape, ndim=ndim)
-#     decon = richardson_lucy(image, params=params)
-#
-#     out_file = os.path.basename(file_dir).rsplit('.', 2)
-#     out_file = out_file[0] + ".".join(["_decon", *out_file[1:]])
-#
-#     tifffile.imwrite(os.path.join(os.path.dirname(file_dir), out_file), decon)
+    #io.imsave(os.path.join(os.path.dirname(file_dir), out_file_tiff), decon, metadata=imagej_metadata)
