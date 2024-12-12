@@ -167,10 +167,9 @@ def decon_ome_stack(file_dir, params=None):
                     result = restoration.richardson_lucy(data_c[z_i, :, :] / maxval_slice,
                                                          psf=params.kernel['kernel'],
                                                          num_iter=10)  #
-                    # plt.imshow(result, vmin=result.min(), vmax=result.max())
+
                     decon[timepoint, z_i, channel, :, :] = result * maxval_slice
 
-                    # pdb.set_trace()
 
     # Crop the data back if we padded it
     if original_size_data != decon.shape:
