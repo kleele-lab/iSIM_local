@@ -10,7 +10,9 @@ import os
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 # os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = 'platform'
-
+##############
+#Keep this for information purposes : psf parameters are hard-encoded here
+##############
 @dataclass
 class Params():
     """ Class for storing parameters to be used in deconvolution"""
@@ -20,12 +22,12 @@ class Params():
     after_gaussian: float = 2
     kernel = None
 
-    def to_dict(self):
-        class_dict = {'sigma': self.sigma,
-                      'z_step': self.z_step,
-                      'background': self.background,
-                      'after_gaussian': self.after_gaussian}
-        return class_dict
+    # def to_dict(self):
+    #     class_dict = {'sigma': self.sigma,
+    #                   'z_step': self.z_step,
+    #                   'background': self.background,
+    #                   'after_gaussian': self.after_gaussian}
+    #     return class_dict
 
 
 def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
@@ -36,16 +38,16 @@ def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
         print("3D images, sigma: ", sigma)
 
     size = image.shape
-    size = [min([17, x]) for x in size]
+    #size = [min([17, x]) for x in size]
 
     # If even size dimensions crop to have a center pixel
-    kernel = {'kernel': np.zeros(size, dtype=float),
+    kernel = {'kernel_array': np.zeros(size, dtype=float),
               'sigma': sigma}
-    kernel['kernel'][tuple(np.array(kernel['kernel'].shape) // 2)] = 1
-    kernel['kernel'] = ndimage.gaussian_filter(kernel['kernel'], sigma=sigma)
+    kernel['kernel_array'][tuple(np.array(kernel['kernel_array'].shape) // 2)] = 1
+    kernel['kernel_array'] = ndimage.gaussian_filter(kernel['kernel_array'], sigma=sigma)
 
-    kernel['kernel'][kernel['kernel'] < 1e-6 * np.max(kernel['kernel'])] = 0
-    kernel['kernel'] = np.divide(kernel['kernel'], np.sum(kernel['kernel'])).astype(np.float32)
+    kernel['kernel_array'][kernel['kernel_array'] < 1e-6 * np.max(kernel['kernel_array'])] = 0
+    kernel['kernel_array'] = np.divide(kernel['kernel_array'], np.sum(kernel['kernel_array'])).astype(np.float32)
     return kernel
 
 
@@ -147,7 +149,7 @@ def decon_ome_stack(file_dir, params=None):
                 #for ij in range(0, data_c.shape[0]):
                     maxval_slice = np.max(data_c[z_i, :, :])
                     result = restoration.richardson_lucy(data_c[z_i, :, :] / maxval_slice,
-                                                         psf=params.kernel['kernel'],
+                                                         psf=params.kernel['kernel_array'],
                                                          num_iter=10)  #
 
                     decon[timepoint, z_i, channel, :, :] = result * maxval_slice
