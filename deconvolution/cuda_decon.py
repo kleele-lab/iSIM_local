@@ -9,8 +9,6 @@ from typing import Union
 import os
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
-
-
 # os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = 'platform'
 
 @dataclass
@@ -38,7 +36,7 @@ def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
         #print("3D images, sigma: ", sigma)
 
     size = image.shape
-    # size = [min([17, x]) for x in size]
+    size = [min([100, x]) for x in size]
 
     # If even size dimensions crop to have a center pixel
     kernel = {'kernel_array': np.zeros(size, dtype=float),
@@ -52,6 +50,11 @@ def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
 
 
 def get_data_c(data_t, size_c, size_z):
+    '''
+    This subroutine is to ensure that the images are progressively loaded in memory
+    and therefore that the deconvolution does not overwhelm the RAM.
+
+    '''
     for channel in range(size_c):
         data_c = data_t[:, channel, :, :]
         if size_z == 1:
@@ -97,7 +100,7 @@ def decon_ome_stack(file_dir, params):
     #     size_c = 1
     #
     #     z_step = 0.2
-    print("\nSizes, t, z and c : ", size_t, size_z, size_c)
+    print("\nSizes, t, z, and c : ", size_t, size_z, size_c)
     print("Dim_order: ", dim_order)
 
     ndim = 2 if size_z == 1 else 3
@@ -118,7 +121,7 @@ def decon_ome_stack(file_dir, params):
 
     if size_t != data.shape[0]:
         size_t = data.shape[0]
-    print("Shape of data", data.shape)
+    print("Shape of data", data.shape, "\n")
 
     # Make data odd shaped
     original_size_data = data.shape
@@ -136,25 +139,14 @@ def decon_ome_stack(file_dir, params):
             crop[dim][1] = data.shape[dim]
     data = data[:, :, :, :crop[3][1], :crop[4][1]]
 
-    # kernel_shape = data.shape[-2:] if ndim == 2 else [np.min([17, size_z]), *data.shape[-2:]]
-    # # Decon
-    # if params is None:
-    #     background = 100
-    # else:
-    #     background = params.background
-
-    my_slices = None
     decon = np.empty_like(data)
     for timepoint in tqdm(range(size_t)):
         data_t = data[timepoint, :, :, :, :]
         data_c_iterable = get_data_c(data_t, size_c, size_z)
-        # if my_slices is None:
-        # if ndim == 3:
+
         for channel, data_c in data_c_iterable:
             params.kernel = make_kernel(image=data_c, sigma=params.sigma, z_step=params.z_step)
-            # for z_i in tqdm(range(0, data_c.shape[0])):
-            # for ij in range(0, data_c.shape[0]):
-            maxval_slice = 65535 #16-bit images     np.max(data_c)
+            maxval_slice = 65535 #16-bit images  alternative: np.max(data_c)
 
             result = restoration.richardson_lucy(data_c / maxval_slice,
                                                  psf=params.kernel['kernel_array'],
@@ -167,6 +159,7 @@ def decon_ome_stack(file_dir, params):
         decon = decon[:, :original_size_data[1], :, :, :]
     if original_size_data != decon.shape:
         decon = np.pad(decon, pad)
+
     print("DECON SHAPE ", decon.shape)
 
     out_file = os.path.basename(file_dir).rsplit('.', 2)
