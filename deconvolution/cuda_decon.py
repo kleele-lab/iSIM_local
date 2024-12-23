@@ -9,6 +9,8 @@ from typing import Union
 import os
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
+
+
 # os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = 'platform'
 
 @dataclass
@@ -20,20 +22,13 @@ class Params():
     after_gaussian: float = 2
     kernel = None
 
-    # def to_dict(self):
-    #     class_dict = {'sigma': self.sigma,
-    #                   'z_step': self.z_step,
-    #                   'background': self.background,
-    #                   'after_gaussian': self.after_gaussian}
-    #     return class_dict
-
 
 def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
     """Make a gaussian kernel that fits the psf of the microscope"""
     if image.ndim == 3:
         z_sigma = 0.48 / z_step
         sigma = [z_sigma, sigma, sigma]
-        #print("3D images, sigma: ", sigma)
+        # print("3D images, sigma: ", sigma)
 
     size = image.shape
     size = [min([100, x]) for x in size]
@@ -145,14 +140,16 @@ def decon_ome_stack(file_dir, params):
         data_c_iterable = get_data_c(data_t, size_c, size_z)
 
         for channel, data_c in data_c_iterable:
+
             params.kernel = make_kernel(image=data_c, sigma=params.sigma, z_step=params.z_step)
-            maxval_slice = 65535 #16-bit images  alternative: np.max(data_c)
+            maxval_slice = 65535  # 16-bit images;  alternative: np.max(data_c)
 
             result = restoration.richardson_lucy(data_c / maxval_slice,
                                                  psf=params.kernel['kernel_array'],
                                                  num_iter=10)  #
 
-            decon[timepoint, :, channel, :, :] = result * maxval_slice
+            result = result * maxval_slice
+            decon[timepoint, :, channel, :, :] = result.astype(np.uint16)
 
     # Crop the data back if we padded it
     if original_size_data != decon.shape:
