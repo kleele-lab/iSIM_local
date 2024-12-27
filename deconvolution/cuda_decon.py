@@ -7,6 +7,7 @@ import xmltodict
 from tqdm import tqdm
 from typing import Union
 import os
+import json
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
@@ -17,18 +18,25 @@ os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 class Params():
     """ Class for storing parameters to be used in deconvolution"""
     sigma: float = 3.9 / 2.335
-    z_step: float = 0.2
+    z_step: float = -1.  # default value designated later
     background: Union[int, str] = 'median'
-    after_gaussian: float = 2
     kernel = None
 
 
 def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
-    """Make a gaussian kernel that fits the psf of the microscope"""
+    """
+    Make a gaussian kernel that fits the psf of the microscope.
+
+    The psf is designed to have the same number of dimensions then
+    the image. The maximum shape of the psf is 100 in either dimension,
+    this limit has been arbitrarily chosen. From tests, higher psf
+    dimensions lead to high processing times and RAM consumptions, without
+    visually improving on the results.
+    """
+
     if image.ndim == 3:
         z_sigma = 0.48 / z_step
         sigma = [z_sigma, sigma, sigma]
-        # print("3D images, sigma: ", sigma)
 
     size = image.shape
     size = [min([100, x]) for x in size]
@@ -45,11 +53,12 @@ def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
 
 
 def get_data_c(data_t, size_c, size_z):
-    '''
-    This subroutine is to ensure that the images are progressively loaded in memory
-    and therefore that the deconvolution does not overwhelm the RAM.
+    """
+    Ensures a progressive supply of images to the deconvolution routine.
 
-    '''
+    Will provide z-stack of images, per channel.
+    """
+
     for channel in range(size_c):
         data_c = data_t[:, channel, :, :]
         if size_z == 1:
@@ -58,12 +67,20 @@ def get_data_c(data_t, size_c, size_z):
         yield channel, data_c
 
 
-def decon_ome_stack(file_dir, params):
+def decon_ome_stack(file_dir, background):
+    """
+    Main deconvolution routine that reads in images, processes,
+    deconvolves, and saves the data.
+
+    """
+
     data = None
-    params = params
+    params = Params
+    params.background = background
     with tifffile.TiffFile(file_dir) as tif:
         assert tif.is_imagej
         imagej_metadata = tif.imagej_metadata
+
 
         my_dict = xmltodict.parse(tif.ome_metadata, force_list={'Plane'})
         size_t = int(my_dict['OME']['Image']["Pixels"]["@SizeT"])
@@ -72,11 +89,11 @@ def decon_ome_stack(file_dir, params):
 
         try:
             z_step = float(my_dict['OME']['Image']["Pixels"]['@PhysicalSizeZ'])
-            params = Params(z_step=z_step)
+            params.z_step = z_step  # = Params(z_step=z_step)
         except KeyError:
             print("Could not get z step size. Will put default 0.2")
-            z_step = 0.2
-            params = Params()
+            params.z_step = 0.2
+            # params = Params()
 
         assert params != None
         # 'XYCZT' or 'XYZCT' ?
@@ -134,22 +151,24 @@ def decon_ome_stack(file_dir, params):
             crop[dim][1] = data.shape[dim]
     data = data[:, :, :, :crop[3][1], :crop[4][1]]
 
+    # start of the deconvolution loop
     decon = np.empty_like(data)
     for timepoint in tqdm(range(size_t)):
         data_t = data[timepoint, :, :, :, :]
         data_c_iterable = get_data_c(data_t, size_c, size_z)
 
         for channel, data_c in data_c_iterable:
-
             params.kernel = make_kernel(image=data_c, sigma=params.sigma, z_step=params.z_step)
-            maxval_slice = 65535  # 16-bit images;  alternative: np.max(data_c)
+            maxval_uint16 = 65535  # max value for 16-bit images;  alternative: np.max(data_c)
 
-            result = restoration.richardson_lucy(data_c / maxval_slice,
+            result = restoration.richardson_lucy(data_c / maxval_uint16,
                                                  psf=params.kernel['kernel_array'],
-                                                 num_iter=10)  #
+                                                 num_iter=10)
 
-            result = result * maxval_slice
+            result = result * maxval_uint16
             decon[timepoint, :, channel, :, :] = result.astype(np.uint16)
+
+    # Here the main tif file is closed : post-processing and saving the deconvolved images next
 
     # Crop the data back if we padded it
     if original_size_data != decon.shape:

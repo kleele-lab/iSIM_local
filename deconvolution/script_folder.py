@@ -26,9 +26,12 @@ def list_files(dir):
     return r
 
 
-parameters = {
-    'background': "median",
-}
+# parameters = {
+#     'background': "median",
+# }
+
+background = "median"
+
 # background      0-3: otsu with this scaling factor
 # background      > 3: fixed value
 # background 'median': median of each z-stack as bg
@@ -40,4 +43,4 @@ print("STARTING DECON!")
 
 for file in img_list:
     print(file)
-    cuda_decon.decon_ome_stack(file, params=parameters)
+    cuda_decon.decon_ome_stack(file, background=background)

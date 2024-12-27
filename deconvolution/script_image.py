@@ -16,9 +16,11 @@ import cuda_decon
 folder = sys.argv[1]
 files = Path(folder).rglob('*.ome.tif')
 
-parameters = {
-    'background': "median",
-}
+# parameters = {
+#     'background': "median",
+# }
+
+background = "median"
 # background      0-3: otsu with this scaling factor
 # background      > 3: fixed value
 # background 'median': median of each z-stack as bg
@@ -28,4 +30,4 @@ for file in files:
         if not 'decon' in file.name:
             print(file.name)
             print(file.as_posix())
-            cuda_decon.decon_ome_stack(file.as_posix(), params=parameters)
+            cuda_decon.decon_ome_stack(file.as_posix(), background=background)
