@@ -102,7 +102,7 @@ def decon_ome_stack(file_dir, background):
         data = tif.asarray()
 
     # if data is None:
-    #     print("ATTENION: NORMAL READING OF TIFF FAILED! RESORT TO BASIC! ASSUME 1 TIME POINT & 1 CHANNEL!")
+    #     print("ATTENTION: NORMAL READING OF TIFF FAILED! RESORT TO BASIC! ASSUME 1 TIME POINT & 1 CHANNEL!")
     #     data = io.imread(file_dir, plugin='pil')
     #
     #     dim_order = 'XYCZT'
@@ -139,6 +139,7 @@ def decon_ome_stack(file_dir, background):
     original_size_data = data.shape
     pad = tuple(np.zeros((5, 2), int))
     crop = tuple(np.zeros((5, 2), int))
+
     if data.shape[1] % 2 == 0:
         pad_here = tuple(np.zeros((5, 2), int))
         pad_here[1][1] = 1
@@ -161,12 +162,28 @@ def decon_ome_stack(file_dir, background):
             params.kernel = make_kernel(image=data_c, sigma=params.sigma, z_step=params.z_step)
             maxval_uint16 = 65535  # max value for 16-bit images;  alternative: np.max(data_c)
 
-            result = restoration.richardson_lucy(data_c / maxval_uint16,
+            # let't pad the array in x and y directions
+            pad_value = 50
+            origin_shape = list(data_c.shape)
+            target_shape = np.copy(origin_shape)
+            target_shape[1] += 2 * pad_value
+            target_shape[2] += 2 * pad_value
+
+            for_decon = np.zeros(target_shape)+np.median(data_c) / maxval_uint16
+
+            for_decon[:,
+            pad_value:origin_shape[1] + pad_value,
+            pad_value:origin_shape[2] + pad_value] = data_c / maxval_uint16
+
+            result = restoration.richardson_lucy(for_decon,
                                                  psf=params.kernel['kernel_array'],
                                                  num_iter=10)
 
             result = result * maxval_uint16
-            decon[timepoint, :, channel, :, :] = result.astype(np.uint16)
+
+            decon[timepoint, :, channel, :, :] = result.astype(np.uint16)[:,
+                                                 pad_value:origin_shape[1] + pad_value,
+                                                 pad_value:origin_shape[2] + pad_value]
 
     # Here the main tif file is closed : post-processing and saving the deconvolved images next
 
