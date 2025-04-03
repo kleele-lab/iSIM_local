@@ -31,6 +31,9 @@ fi
 if [[ "$1" == *.ome.tif ]]
 then
 	echo "reading image $1"
+elif [[ "$1" == *.vsi ]]
+then
+	echo "reading image $1"
 else
 	echo"$0: Wrong arguments"
 fi
