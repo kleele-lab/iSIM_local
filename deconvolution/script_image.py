@@ -1,5 +1,6 @@
 import os
 import sys
+import itertools
 
 os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -14,8 +15,8 @@ import cuda_decon
 
 # Import
 folder = sys.argv[1]
-files = Path(folder).rglob('*.ome.tif')
-
+tif_files = Path(folder).rglob('*.ome.tif')
+vsi_files = Path(folder).rglob('*.vsi')
 # parameters = {
 #     'background': "median",
 # }
@@ -24,8 +25,7 @@ background = "median"
 # background      0-3: otsu with this scaling factor
 # background      > 3: fixed value
 # background 'median': median of each z-stack as bg
-
-for file in files:
+for file in itertools.chain(tif_files, vsi_files):
     if not file.name.startswith('._'):
         if not 'decon' in file.name:
             print(file.name)
