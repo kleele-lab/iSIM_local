@@ -8,6 +8,7 @@ from tqdm import tqdm
 from typing import Union
 import os
 import json
+import bioformats as bf
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
@@ -77,10 +78,12 @@ def decon_ome_stack(file_dir, background):
     data = None
     params = Params
     params.background = background
-    with tifffile.TiffFile(file_dir) as tif:
-        assert tif.is_imagej
-        imagej_metadata = tif.imagej_metadata
 
+    if file_dir.split('.')[-1] == "tif":
+        tif = tifffile.TiffFile(file_dir)
+        # with tifffile.TiffFile(file_dir) as tif:
+        # assert tif.is_imagej
+        imagej_metadata = tif.imagej_metadata
 
         my_dict = xmltodict.parse(tif.ome_metadata, force_list={'Plane'})
         size_t = int(my_dict['OME']['Image']["Pixels"]["@SizeT"])
@@ -101,6 +104,8 @@ def decon_ome_stack(file_dir, background):
 
         data = tif.asarray()
 
+    elif file_dir.split('.')[-1] == "vsi":
+        pass
     # if data is None:
     #     print("ATTENTION: NORMAL READING OF TIFF FAILED! RESORT TO BASIC! ASSUME 1 TIME POINT & 1 CHANNEL!")
     #     data = io.imread(file_dir, plugin='pil')
@@ -169,7 +174,7 @@ def decon_ome_stack(file_dir, background):
             target_shape[1] += 2 * pad_value
             target_shape[2] += 2 * pad_value
 
-            for_decon = np.zeros(target_shape)+np.median(data_c) / maxval_uint16
+            for_decon = np.zeros(target_shape) + np.median(data_c) / maxval_uint16
 
             for_decon[:,
             pad_value:origin_shape[1] + pad_value,
