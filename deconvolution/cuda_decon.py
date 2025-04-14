@@ -7,13 +7,39 @@ import xmltodict
 from tqdm import tqdm
 from typing import Union
 import os
-import json
+import javabridge as jb
 import bioformats as bf
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
-
 # os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = 'platform'
+def _init_logger():
+    """This is so that Javabridge doesn't spill out a lot of DEBUG messages
+    during runtime.
+    From CellProfiler/python-bioformats.
+    """
+    rootLoggerName = jb.get_static_field("org/slf4j/Logger",
+                                         "ROOT_LOGGER_NAME",
+                                         "Ljava/lang/String;")
+
+    rootLogger = jb.static_call("org/slf4j/LoggerFactory",
+                                "getLogger",
+                                "(Ljava/lang/String;)Lorg/slf4j/Logger;",
+                                rootLoggerName)
+
+    logLevel = jb.get_static_field("ch/qos/logback/classic/Level",
+                                   "WARN",
+                                   "Lch/qos/logback/classic/Level;")
+
+    jb.call(rootLogger,
+            "setLevel",
+            "(Lch/qos/logback/classic/Level;)V",
+            logLevel)
+
+
+jb.start_vm(class_path=bf.JARS)
+logger=_init_logger()
+
 
 @dataclass
 class Params():
