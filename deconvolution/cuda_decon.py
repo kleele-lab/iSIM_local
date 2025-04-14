@@ -62,8 +62,8 @@ def get_data_c(data_t, size_c, size_z):
 
     for channel in range(size_c):
         data_c = data_t[:, channel, :, :]
-        if size_z == 1:
-            data_c = data_c[0, :, :]
+        # if size_z == 1:
+        #     data_c = data_c[0, :, :]
 
         yield channel, data_c
 
@@ -81,9 +81,8 @@ def decon_ome_stack(file_dir, background):
 
     if file_dir.split('.')[-1] == "tif":
         tif = tifffile.TiffFile(file_dir)
-        # with tifffile.TiffFile(file_dir) as tif:
         # assert tif.is_imagej
-        imagej_metadata = tif.imagej_metadata
+        image_metadata = tif.imagej_metadata
 
         my_dict = xmltodict.parse(tif.ome_metadata, force_list={'Plane'})
         size_t = int(my_dict['OME']['Image']["Pixels"]["@SizeT"])
@@ -105,7 +104,34 @@ def decon_ome_stack(file_dir, background):
         data = tif.asarray()
 
     elif file_dir.split('.')[-1] == "vsi":
-        pass
+        vsi = bf.ImageReader(file_dir)
+        image_metadata = bf.get_omexml_metadata(file_dir)
+        image_metadata = image_metadata.encode('ascii', errors="ignore")
+
+        my_dict = xmltodict.parse(image_metadata, force_list={'Plane'})
+        image_metadata = my_dict
+
+        size_t = int(my_dict['OME']['Image'][0]['Pixels']['@SizeT'])
+        size_z = int(my_dict['OME']['Image'][0]['Pixels']['@SizeZ'])
+        size_c = int(my_dict['OME']['Image'][0]['Pixels']['@SizeC'])
+        size_x = int(my_dict['OME']['Image'][0]['Pixels']['@SizeX'])
+        size_y = int(my_dict['OME']['Image'][0]['Pixels']['@SizeY'])
+
+        dim_order = my_dict['OME']['Image'][0]['Pixels']['@DimensionOrder']
+
+        if dim_order == 'XYCZT':
+            # data = np.zeros((size_t, size_z, size_c, size_y, size_x))
+            data = np.zeros((size_x, size_y, size_c, size_z, size_t))
+            for i_z in range(0, size_z):
+                for i_t in range(0, size_t):
+                    data[:, :, :, i_z, i_t] = vsi.read(series='0', z=i_z, t=i_t)
+        else:
+            raise "Dim order is NOT XYZCT"
+
+        data = np.moveaxis(data, [0, 1, 2, 3, 4], [4, 3, 2, 1, 0])
+
+        jb.kill_vm()
+
     # if data is None:
     #     print("ATTENTION: NORMAL READING OF TIFF FAILED! RESORT TO BASIC! ASSUME 1 TIME POINT & 1 CHANNEL!")
     #     data = io.imread(file_dir, plugin='pil')
@@ -131,9 +157,9 @@ def decon_ome_stack(file_dir, background):
     if size_z > 1 and size_c > 1 and dim_order == 'XYZCT':
         data = np.moveaxis(data, 1, 2)
 
-    if size_z == 1:
+    if size_z == 1 and len(data.shape) < 5:
         data = np.expand_dims(data, 1)
-    if size_c == 1:
+    if size_c == 1 and len(data.shape) < 5:
         data = np.expand_dims(data, 2)
 
     if size_t != data.shape[0]:
@@ -176,9 +202,14 @@ def decon_ome_stack(file_dir, background):
 
             for_decon = np.zeros(target_shape) + np.median(data_c) / maxval_uint16
 
-            for_decon[:,
-            pad_value:origin_shape[1] + pad_value,
-            pad_value:origin_shape[2] + pad_value] = data_c / maxval_uint16
+            if np.max(data_c) > 1:
+                for_decon[:,
+                pad_value:origin_shape[1] + pad_value,
+                pad_value:origin_shape[2] + pad_value] = data_c / maxval_uint16
+            else:
+                for_decon[:,
+                pad_value:origin_shape[1] + pad_value,
+                pad_value:origin_shape[2] + pad_value] = data_c
 
             result = restoration.richardson_lucy(for_decon,
                                                  psf=params.kernel['kernel_array'],
@@ -194,14 +225,17 @@ def decon_ome_stack(file_dir, background):
 
     # Crop the data back if we padded it
     if original_size_data != decon.shape:
-        decon = decon[:, :original_size_data[1], :, :, :]
+        decon = decon[:, :original_size_data[1], :, :, :].astype(np.uint16)
     if original_size_data != decon.shape:
-        decon = np.pad(decon, pad)
+        decon = np.pad(decon, pad).astype(np.uint16)
 
     print("DECON SHAPE ", decon.shape)
 
     out_file = os.path.basename(file_dir).rsplit('.', 2)
     out_file_tiff = out_file[0] + ".".join(["_decon", *out_file[1:]])
+
+    if out_file[-1] == 'vsi':
+        out_file_tiff = out_file[0]+'_decon.tif'
 
     with tifffile.TiffWriter(os.path.join(os.path.dirname(file_dir), out_file_tiff), imagej=True) as dst:
         for decon_one in decon:
@@ -209,5 +243,6 @@ def decon_ome_stack(file_dir, background):
             dst.write(
                 frame,
                 contiguous=True,
-                metadata=imagej_metadata,
+                metadata=image_metadata,
+                dtype=np.uint16
             )
