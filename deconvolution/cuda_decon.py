@@ -51,7 +51,8 @@ class Params():
 
 class Image():
     """ Generic class to store the data for the deconvolution 
-    Image can be read from tiff or vsi"""
+    Image can be read from tif or vsi"""
+
     def __init__(self):
         data: np.ndarray = np.empty(1)
         metadata: dict = {}
@@ -93,9 +94,6 @@ class Image():
         #     size_c = 1
         #
         #     z_step = 0.2
-        print("\nReading tif:")
-        print("\nSizes, t, z, and c : ", size_t, size_z, size_c)
-        print("Dim_order: ", dim_order)
 
         ndim = 2 if size_z == 1 else 3
         # Make standardized array with all dimensions
@@ -119,10 +117,14 @@ class Image():
         Image.size_z = size_z
         Image.size_t = size_t
         Image.size_c = size_c
-        print("New shape of data", Image.data.shape, "\n")
 
         out_file = os.path.basename(file_dir).rsplit('.', 2)
         Image.out_file_end = out_file[0] + ".".join(["_decon", *out_file[1:]])
+
+        print("\nReading tif:")
+        print("Sizes, t, z, and c : ", size_t, size_z, size_c)
+        print("Dim_order in the original file : ", dim_order)
+        print("New shape of data going into decon", Image.data.shape, "\n")
 
     def read_vsi(self, file_dir: posixpath) -> None:
         jb.start_vm(class_path=bf.JARS)
@@ -166,6 +168,10 @@ class Image():
         out_file = os.path.basename(file_dir).rsplit('.', 2)
         Image.out_file_end = out_file[0] + ".".join(["_decon.tif "])
         jb.kill_vm()
+        print("\nReading vsi:")
+        print("Sizes, t, z, and c : ", size_t, size_z, size_c)
+        print("Dim_order in the original file : ", dim_order)
+        print("New shape of data going into decon", Image.data.shape, "\n")
 
 def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
     """
@@ -291,7 +297,7 @@ def decon_ome_stack(file_dir, background):
     if original_size_data != decon.shape:
         decon = np.pad(decon, pad).astype(np.uint16)
 
-    print("DECON SHAPE ", decon.shape)
+    print("Shape of deconvoluted data  : ", decon.shape)
 
     with tifffile.TiffWriter(os.path.join(os.path.dirname(file_dir), Img.out_file_end), imagej=True) as dst:
         for decon_one in decon:
