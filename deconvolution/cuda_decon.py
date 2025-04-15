@@ -48,6 +48,50 @@ class Params():
     background: Union[int, str] = 'median'
     kernel = None
 
+# def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
+#     """Make a gaussian kernel that fits the psf of the microscope"""
+#     if image.ndim == 3:
+#         z_sigma = 0.48/z_step
+#         sigma = [z_sigma, sigma, sigma]
+#         print("3D images, sigma: ", sigma)
+#
+#     size = image.shape
+#     size = [min([17, x]) for x in size]
+#
+#     # If even size dimensions crop to have a center pixel
+#     kernel = {'kernel': np.zeros(size, dtype=float),
+#               'sigma': sigma}
+#     kernel['kernel'][tuple(np.array(kernel['kernel'].shape)//2)] = 1
+#     kernel['kernel'] = ndimage.gaussian_filter(kernel['kernel'], sigma=sigma)
+#
+#
+#     kernel['kernel'][kernel['kernel']<1e-6*np.max(kernel['kernel'])] = 0
+#     kernel['kernel'] = np.divide(kernel['kernel'], np.sum(kernel['kernel'])).astype(np.float32)
+#     return kernel
+#
+# def richardson_lucy(image, params=None, algo=None, kernel=None, prepared=True, background=None):
+#     original_data_type = image.dtype
+#     if params is not None:
+#         algo, kernel, prepared = params.algo, params.kernel, params.prepared
+#         background = params.background
+#         try:
+#             destripe_zones = params.destripe
+#         except (KeyError, AttributeError) as e:
+#             print("No function for destriping, will use default")
+#         # print(params)
+#     else:
+#         if algo is None:
+#             algo = fd_restoration.RichardsonLucyDeconvolver().initialize()
+#         if kernel is None:
+#             kernel = make_kernel(image, sigma=3.9/2.355)
+#         if background is None:
+#             print('no background specified, using 0.85')
+#             background = 0.85
+#
+#     if not prepared:
+#         image = prepare_decon(image, background, destripe_zones)
+#     res = algo.run(fd_data.Acquisition(data=image, kernel=kernel['kernel']), niter=10).data
+#     return res.astype(original_data_type)
 
 class Image():
     """ Generic class to store the data for the deconvolution 
@@ -282,6 +326,7 @@ def decon_ome_stack(file_dir, background):
             result = restoration.richardson_lucy(for_decon,
                                                  psf=params.kernel['kernel_array'],
                                                  num_iter=10)
+            #decon[timepoint, :, channel, :, :] = richardson_lucy(data_c, params=params)
 
             result = result * maxval_uint16
 
