@@ -1,6 +1,6 @@
 import posixpath
-
-from skimage import restoration
+from flowdec import data as fd_data
+from flowdec import restoration as fd_restoration
 from scipy import ndimage
 import numpy as np
 from dataclasses import dataclass
@@ -46,52 +46,43 @@ class Params():
     sigma: float = 3.9 / 2.335
     z_step: float = 0.2
     background: Union[int, str] = 'median'
-    kernel = None
+    kernel = None  # to be initialized
+    algo = None  # to be initialized
+
 
 # def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
 #     """Make a gaussian kernel that fits the psf of the microscope"""
 #     if image.ndim == 3:
-#         z_sigma = 0.48/z_step
+#         z_sigma = 0.48 / z_step
 #         sigma = [z_sigma, sigma, sigma]
-#         print("3D images, sigma: ", sigma)
+#         print("In make_kernel, 3D image detected, sigma: ", sigma)
 #
 #     size = image.shape
-#     size = [min([17, x]) for x in size]
+#     size = [min([100, x]) for x in size]
 #
 #     # If even size dimensions crop to have a center pixel
 #     kernel = {'kernel': np.zeros(size, dtype=float),
 #               'sigma': sigma}
-#     kernel['kernel'][tuple(np.array(kernel['kernel'].shape)//2)] = 1
+#     kernel['kernel'][tuple(np.array(kernel['kernel'].shape) // 2)] = 1
 #     kernel['kernel'] = ndimage.gaussian_filter(kernel['kernel'], sigma=sigma)
 #
-#
-#     kernel['kernel'][kernel['kernel']<1e-6*np.max(kernel['kernel'])] = 0
+#     kernel['kernel'][kernel['kernel'] < 1e-6 * np.max(kernel['kernel'])] = 0
 #     kernel['kernel'] = np.divide(kernel['kernel'], np.sum(kernel['kernel'])).astype(np.float32)
 #     return kernel
-#
-# def richardson_lucy(image, params=None, algo=None, kernel=None, prepared=True, background=None):
-#     original_data_type = image.dtype
-#     if params is not None:
-#         algo, kernel, prepared = params.algo, params.kernel, params.prepared
-#         background = params.background
-#         try:
-#             destripe_zones = params.destripe
-#         except (KeyError, AttributeError) as e:
-#             print("No function for destriping, will use default")
-#         # print(params)
-#     else:
-#         if algo is None:
-#             algo = fd_restoration.RichardsonLucyDeconvolver().initialize()
-#         if kernel is None:
-#             kernel = make_kernel(image, sigma=3.9/2.355)
-#         if background is None:
-#             print('no background specified, using 0.85')
-#             background = 0.85
-#
-#     if not prepared:
-#         image = prepare_decon(image, background, destripe_zones)
-#     res = algo.run(fd_data.Acquisition(data=image, kernel=kernel['kernel']), niter=10).data
-#     return res.astype(original_data_type)
+
+
+def richardson_lucy(image, params=None):
+    original_data_type = image.dtype
+    if params.algo is None:
+        params.algo = fd_restoration.RichardsonLucyDeconvolver(image.ndim).initialize()
+
+    if params.kernel is None:
+        params.kernel = make_kernel(image, sigma=params.sigma)
+        print(params.kernel)
+
+    res = params.algo.run(fd_data.Acquisition(data=image, kernel=params.kernel['kernel_array']), niter=10).data
+    return res.astype(original_data_type)
+
 
 class Image():
     """ Generic class to store the data for the deconvolution 
@@ -189,7 +180,7 @@ class Image():
 
         dim_order = my_dict['OME']['Image'][0]['Pixels']['@DimensionOrder']
 
-        try :
+        try:
             Image.z_step = float(my_dict['OME']['Image'][0]["Pixels"]['@PhysicalSizeZ'])
         except KeyError:
             print("Could not get z step size. Will put default 0.2")
@@ -204,7 +195,10 @@ class Image():
         else:
             raise "Dim order is NOT XYZCT"
 
-        Image.data = np.moveaxis(data, [0, 1, 2, 3, 4], [4, 3, 2, 1, 0])
+        #flowdec needs a re-scale of the vsi data (vsi comes with values between 0 and 1)
+        #here the re-scale is done up to the uint16 values
+        maxval_uint16 = 65535
+        Image.data = np.moveaxis(data, [0, 1, 2, 3, 4], [4, 3, 2, 1, 0]) * maxval_uint16
         Image.size_z = size_z
         Image.size_t = size_t
         Image.size_c = size_c
@@ -216,6 +210,7 @@ class Image():
         print("Sizes, t, z, and c : ", size_t, size_z, size_c)
         print("Dim_order in the original file : ", dim_order)
         print("New shape of data going into decon", Image.data.shape, "\n")
+
 
 def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
     """
@@ -303,38 +298,9 @@ def decon_ome_stack(file_dir, background):
 
         for channel, data_c in data_c_iterable:
             params.kernel = make_kernel(image=data_c, sigma=params.sigma, z_step=params.z_step)
-            maxval_uint16 = 65535  # max value for 16-bit images;  alternative: np.max(data_c)
 
-            # let't pad the array in x and y directions
-            pad_value = 50
-            origin_shape = list(data_c.shape)
-            target_shape = np.copy(origin_shape)
-            target_shape[1] += 2 * pad_value
-            target_shape[2] += 2 * pad_value
+            decon[timepoint, :, channel, :, :] = richardson_lucy(data_c, params=params)
 
-            for_decon = np.zeros(target_shape) + np.median(data_c) / maxval_uint16
-
-            if np.max(data_c) > 1:
-                for_decon[:,
-                pad_value:origin_shape[1] + pad_value,
-                pad_value:origin_shape[2] + pad_value] = data_c / maxval_uint16
-            else:
-                for_decon[:,
-                pad_value:origin_shape[1] + pad_value,
-                pad_value:origin_shape[2] + pad_value] = data_c
-
-            result = restoration.richardson_lucy(for_decon,
-                                                 psf=params.kernel['kernel_array'],
-                                                 num_iter=10)
-            #decon[timepoint, :, channel, :, :] = richardson_lucy(data_c, params=params)
-
-            result = result * maxval_uint16
-
-            decon[timepoint, :, channel, :, :] = result.astype(np.uint16)[:,
-                                                 pad_value:origin_shape[1] + pad_value,
-                                                 pad_value:origin_shape[2] + pad_value]
-
-    # Here the main tif file is closed : post-processing and saving the deconvolved images next
 
     # Crop the data back if we padded it
     if original_size_data != decon.shape:
