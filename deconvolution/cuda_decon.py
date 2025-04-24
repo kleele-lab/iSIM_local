@@ -204,7 +204,7 @@ class Image():
         Image.size_c = size_c
 
         out_file = os.path.basename(file_dir).rsplit('.', 2)
-        Image.out_file_end = out_file[0] + ".".join(["_decon.tif "])
+        Image.out_file_end = out_file[0] + ".".join(["_decon.tif"])
         jb.kill_vm()
         print("\nReading vsi:")
         print("Sizes, t, z, and c : ", size_t, size_z, size_c)
