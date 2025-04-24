@@ -8,7 +8,7 @@
 module purge
 
 module load stack/2024-06
-module load python_cuda/3.9.18
+module load python_cuda/3.11.6
 module load jdk
 
 source ./decon-env/bin/activate
@@ -28,21 +28,23 @@ then
   exit 1
 fi
 
-if [[ "$1" == *.ome.tif ]]
-then
-	echo "reading image $1"
-elif [[ "$1" == *.vsi ]]
-then
-	echo "reading image $1"
-else
-	echo"$0: Wrong arguments"
-fi
+#if [[ "$1" == *.ome.tif ]]
+#then
+#	echo "reading image $1"
+#elif [[ "$1" == *.vsi ]]
+#then
+#	echo "reading image $1"
+#else
+#	echo"$0: Wrong arguments"
+#fi
+
+abspath=$(realpath $1)
 
 # Enter folder with python script
 cd deconvolution
 
 # Run decon
-python script_image.py $1
+python script_image.py $abspath
 
 # Return to initial location
 cd ..

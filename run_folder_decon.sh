@@ -27,6 +27,7 @@ then
   echo "$0: Too many arguments: $@"
   exit 1
 else
+  abspath=$(realpath $1)
   echo "Reading folder: $1"
 fi
 
@@ -34,7 +35,7 @@ fi
 cd deconvolution
 
 # Check for images in mother dir
-python script_folder.py $1
+python script_folder.py $abspath
 
 # Return to initial location
 cd ..

@@ -14,7 +14,6 @@ import cuda_decon
 # Import
 folder = sys.argv[1]
 
-
 def list_files(dir):
     r = []
     for root, dirs, files in os.walk(dir):

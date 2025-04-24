@@ -15,6 +15,7 @@ import cuda_decon
 
 # Import
 folder = sys.argv[1]
+print("------", folder)
 tif_files = Path(folder).rglob('*.ome.tif')
 vsi_files = Path(folder).rglob('*.vsi')
 # parameters = {
