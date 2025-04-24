@@ -8,10 +8,10 @@
 module purge
 
 module load stack/2024-06
-module load gcc/12.2.0
 module load python_cuda/3.9.18
-module load cuda/12.1.1
-module load cudnn/8.9.7.29-12
+module load jdk
+
+source ./decon-env/bin/activate
 
 # Avoiding the JIT error
 export XLA_FLAGS=--xla_gpu_cuda_data_dir=$CUDA_EULER_ROOT
