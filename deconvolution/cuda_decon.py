@@ -203,6 +203,7 @@ class Image():
         Image.size_t = size_t
         Image.size_c = size_c
 
+        Image.data = np.moveaxis(Image.data, [0, 1, 2, 3, 4], [0, 1, 2, 4, 3])
         out_file = os.path.basename(file_dir).rsplit('.', 2)
         Image.out_file_end = out_file[0] + ".".join(["_decon.tif"])
         jb.kill_vm()
