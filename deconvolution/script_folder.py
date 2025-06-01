@@ -1,5 +1,7 @@
 import os
 import sys
+import javabridge as jb
+import bioformats as bf
 
 os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -38,8 +40,15 @@ background = "median"
 img_list = list_files(folder)
 print("Found images:")
 print(*img_list, sep="\n")
-print("STARTING DECON!")
+print("STARTING DECON!\n")
+
+jb.start_vm(class_path=bf.JARS)
 
 for file in img_list:
     print(file)
-    cuda_decon.decon_ome_stack(file, background=background)
+    try:
+        cuda_decon.decon_ome_stack(file, background=background)
+    except Exception as e:
+        print(e)
+
+jb.kill_vm()

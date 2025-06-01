@@ -1,6 +1,8 @@
 import os
 import sys
 import itertools
+import javabridge as jb
+import bioformats as bf
 
 os.environ['TF_GPU_ALLOCATOR'] = 'cuda_malloc_async'
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -26,9 +28,15 @@ background = "median"
 # background      0-3: otsu with this scaling factor
 # background      > 3: fixed value
 # background 'median': median of each z-stack as bg
+jb.start_vm(class_path=bf.JARS)
+
 for file in itertools.chain(tif_files, vsi_files):
     if not file.name.startswith('._'):
         if not 'decon' in file.name:
             print(file.name)
             print(file.as_posix())
-            cuda_decon.decon_ome_stack(file.as_posix(), background=background)
+            try:
+                cuda_decon.decon_ome_stack(file.as_posix(), background=background)
+            except Exception as e:
+                print(e)
+jb.kill_vm()

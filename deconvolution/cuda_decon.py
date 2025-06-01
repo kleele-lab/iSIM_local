@@ -162,7 +162,7 @@ class Image():
         print("New shape of data going into decon", Image.data.shape, "\n")
 
     def read_vsi(self, file_dir: posixpath) -> None:
-        jb.start_vm(class_path=bf.JARS)
+
         logger = _init_logger()
 
         vsi = bf.ImageReader(file_dir)
@@ -206,7 +206,7 @@ class Image():
         Image.data = np.moveaxis(Image.data, [0, 1, 2, 3, 4], [0, 1, 2, 4, 3])
         out_file = os.path.basename(file_dir).rsplit('.', 2)
         Image.out_file_end = out_file[0] + ".".join(["_decon.tif"])
-        jb.kill_vm()
+
         print("\nReading vsi:")
         print("Sizes, t, z, and c : ", size_t, size_z, size_c)
         print("Dim_order in the original file : ", dim_order)
