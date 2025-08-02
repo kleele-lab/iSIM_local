@@ -1,6 +1,6 @@
 flowdec
 opencv-python
-tensorflow==2.13
+tensorflow[and-cuda]==2.19.0
 tqdm
 xmltodict
 python-javabridge
