@@ -3,5 +3,3 @@ opencv-python
 tensorflow[and-cuda]==2.19.0
 tqdm
 xmltodict
-python-javabridge
-python-bioformats
