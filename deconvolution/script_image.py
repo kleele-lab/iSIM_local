@@ -18,11 +18,6 @@ import cuda_decon
 # Import
 file = sys.argv[1]
 file=Path(file)
-#tif_files = Path(folder).rglob('*.ome.tif')
-#vsi_files = Path(folder).rglob('*.vsi')
-# parameters = {
-#     'background': "median",
-# }
 
 background = "median"
 # background      0-3: otsu with this scaling factor
@@ -30,13 +25,4 @@ background = "median"
 # background 'median': median of each z-stack as bg
 jb.start_vm(class_path=bf.JARS)
 cuda_decon.decon_ome_stack(file.as_posix(), background=background)
-# for file in itertools.chain(tif_files, vsi_files):
-#     if not file.name.startswith('._'):
-#         if not 'decon' in file.name:
-#             print(file.name)
-#             print(file.as_posix())
-#             try:
-#                 cuda_decon.decon_ome_stack(file.as_posix(), background=background)
-#             except Exception as e:
-#                 print(e)
 jb.kill_vm()
