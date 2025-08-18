@@ -275,28 +275,28 @@ def decon_ome_stack(file_dir, background):
         Img.read_vsi(file_dir)
 
     # Make data odd shaped
-    original_size_data = Img.data.shape
-    pad = tuple(np.zeros((5, 2), int))
-    crop = tuple(np.zeros((5, 2), int))
+    #original_size_data = Img.data.shape
+    #pad = tuple(np.zeros((5, 2), int))
+    #crop = tuple(np.zeros((5, 2), int))
 
-    if Img.data.shape[1] % 2 == 0:
-        pad_here = tuple(np.zeros((5, 2), int))
-        pad_here[1][1] = 1
-        Img.data = np.pad(Img.data, pad)
-    for dim in [3, 4]:
-        if Img.data.shape[dim] % 2 == 0:
-            pad[dim][1] = 1
-            crop[dim][1] = Img.data.shape[dim] - 1
-        else:
-            crop[dim][1] = Img.data.shape[dim]
-    Img.data = Img.data[:, :, :, :crop[3][1], :crop[4][1]]
+    #if Img.data.shape[1] % 2 == 0:
+    #    pad_here = tuple(np.zeros((5, 2), int))
+    #    pad_here[1][1] = 1
+    #    Img.data = np.pad(Img.data, pad)
+    #for dim in [3, 4]:
+    #    if Img.data.shape[dim] % 2 == 0:
+    #        pad[dim][1] = 1
+    #        crop[dim][1] = Img.data.shape[dim] - 1
+    #    else:
+    #        crop[dim][1] = Img.data.shape[dim]
+    #Img.data = Img.data[:, :, :, :crop[3][1], :crop[4][1]]
 
     # start of the deconvolution loop
     decon = np.empty_like(Img.data)
+
     for timepoint in tqdm(range(Img.size_t)):
         data_t = Img.data[timepoint, :, :, :, :]
         data_c_iterable = get_data_c(data_t, Img.size_c, Img.size_z)
-
         for channel, data_c in data_c_iterable:
             params.kernel = make_kernel(image=data_c, sigma=params.sigma, z_step=params.z_step)
 
@@ -304,12 +304,12 @@ def decon_ome_stack(file_dir, background):
 
 
     # Crop the data back if we padded it
-    if original_size_data != decon.shape:
-        decon = decon[:, :original_size_data[1], :, :, :].astype(np.uint16)
-    if original_size_data != decon.shape:
-        decon = np.pad(decon, pad).astype(np.uint16)
-
-    print("Shape of deconvoluted data  : ", decon.shape)
+    #if original_size_data != decon.shape:
+    #    decon = decon[:, :original_size_data[1], :, :, :].astype(np.uint16)
+    #if original_size_data != decon.shape:
+    #    decon = np.pad(decon, pad).astype(np.uint16)
+    
+    decon=decon.astype(np.uint16)
 
     with tifffile.TiffWriter(os.path.join(os.path.dirname(file_dir), Img.out_file_end), imagej=True) as dst:
         for decon_one in decon:
