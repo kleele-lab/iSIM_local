@@ -20,7 +20,7 @@ def list_files(dir):
     r = []
     for root, dirs, files in os.walk(dir):
         for name in files:
-            if name.endswith('.ome.tif') or name.endswith('.vsi'):
+            if name.endswith('.tif') or name.endswith('.vsi'):
                 if not name.startswith('._'):
                     if not 'decon' in name:
                         r.append(os.path.join(root, name))
