@@ -57,7 +57,7 @@ class Params():
     """ Class for storing parameters to be used in deconvolution"""
     sigma: float = 3.9 / 2.335
     z_step: float = 0.2
-    background: Union[int, str] = 'median'
+    background: Union[int, str] = None #'median'
     kernel = None  # to be initialized
     algo = None  # to be initialized
 
@@ -67,8 +67,9 @@ def richardson_lucy(image, params=None):
     if params.algo is None:
         params.algo = fd_restoration.RichardsonLucyDeconvolver(image.ndim).initialize()
 
-    if params.kernel is None:
-        params.kernel = make_kernel(image, sigma=params.sigma)
+    #if params.kernel is None:
+    #    params.kernel = make_kernel(image, sigma=params.sigma)
+   
     res = params.algo.run(fd_data.Acquisition(data=image, kernel=params.kernel['kernel_array']), niter=10).data
     return res.astype(original_data_type)
 
@@ -285,7 +286,10 @@ def run_deconvolution(data_c, params) :
     params.kernel=make_kernel(image=data_c, sigma=params.sigma, z_step=params.z_step)
     reference_kernel=params.kernel['kernel_array']
     output=np.empty_like(data_c)
-    data_c = prepare_decon(data_c, background='median', destripe_zones=get_filter_zone)
+
+    if params.background is not None :
+        data_c = prepare_decon(data_c, background=params.background, destripe_zones=get_filter_zone)
+    
     if NZ<=NZ_per_cycle :
         params.kernel['kernel_array']=reference_kernel
         output=richardson_lucy(data_c, params=params)

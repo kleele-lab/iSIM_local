@@ -19,7 +19,7 @@ import cuda_decon
 file = sys.argv[1]
 file=Path(file)
 
-background = "median"
+background = None #change to "median" (or option below) to trigger the median substraction before the decon
 # background      0-3: otsu with this scaling factor
 # background      > 3: fixed value
 # background 'median': median of each z-stack as bg
