@@ -14,6 +14,7 @@ import bioformats as bf
 import subprocess as sp
 import os
 
+from prepare import prepare_decon, get_filter_zone
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
@@ -61,27 +62,6 @@ class Params():
     algo = None  # to be initialized
 
 
-# def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
-#     """Make a gaussian kernel that fits the psf of the microscope"""
-#     if image.ndim == 3:
-#         z_sigma = 0.48 / z_step
-#         sigma = [z_sigma, sigma, sigma]
-#         print("In make_kernel, 3D image detected, sigma: ", sigma)
-#
-#     size = image.shape
-#     size = [min([100, x]) for x in size]
-#
-#     # If even size dimensions crop to have a center pixel
-#     kernel = {'kernel': np.zeros(size, dtype=float),
-#               'sigma': sigma}
-#     kernel['kernel'][tuple(np.array(kernel['kernel'].shape) // 2)] = 1
-#     kernel['kernel'] = ndimage.gaussian_filter(kernel['kernel'], sigma=sigma)
-#
-#     kernel['kernel'][kernel['kernel'] < 1e-6 * np.max(kernel['kernel'])] = 0
-#     kernel['kernel'] = np.divide(kernel['kernel'], np.sum(kernel['kernel'])).astype(np.float32)
-#     return kernel
-
-
 def richardson_lucy(image, params=None):
     original_data_type = image.dtype
     if params.algo is None:
@@ -89,8 +69,6 @@ def richardson_lucy(image, params=None):
 
     if params.kernel is None:
         params.kernel = make_kernel(image, sigma=params.sigma)
-        print(params.kernel)
-
     res = params.algo.run(fd_data.Acquisition(data=image, kernel=params.kernel['kernel_array']), niter=10).data
     return res.astype(original_data_type)
 
@@ -111,35 +89,42 @@ class Image():
     def read_tiff(self, file_dir: posixpath) -> None:
         tif = tifffile.TiffFile(file_dir)
         Image.metadata = tif.imagej_metadata
+        
+        if tif.ome_metadata is not None :
+            my_dict = xmltodict.parse(tif.ome_metadata, force_list={'Plane'})
 
-        my_dict = xmltodict.parse(tif.ome_metadata, force_list={'Plane'})
-        size_t = int(my_dict['OME']['Image']["Pixels"]["@SizeT"])
-        size_z = int(my_dict['OME']['Image']["Pixels"]["@SizeZ"])
-        size_c = int(my_dict['OME']['Image']["Pixels"]["@SizeC"])
-
-        try:
-            Image.z_step = float(my_dict['OME']['Image']["Pixels"]['@PhysicalSizeZ'])
-        except KeyError:
-            print("Could not get z step size. Will put default 0.2")
-            Image.z_step = 0.2
+            size_t = int(my_dict['OME']['Image']["Pixels"]["@SizeT"])
+            size_z = int(my_dict['OME']['Image']["Pixels"]["@SizeZ"])
+            size_c = int(my_dict['OME']['Image']["Pixels"]["@SizeC"])
+            try:
+                Image.z_step = float(my_dict['OME']['Image']["Pixels"]['@PhysicalSizeZ'])
+            except KeyError:
+                print("Could not get z step size. Will put default 0.2")
+                Image.z_step = 0.2
 
         # 'XYCZT' or 'XYZCT' ?
-        dim_order = my_dict['OME']['Image']["Pixels"]["@DimensionOrder"]
+            dim_order = my_dict['OME']['Image']["Pixels"]["@DimensionOrder"]
+        else :
+            metadata_list=Image.metadata['Info'].split('\n')
+            metadata_list = filter(None, metadata_list)
+            my_dict=dict(i.split(sep='=',maxsplit=1) for i in metadata_list)
+            
+            size_t = int(my_dict[" SizeT "])
+            size_z = int(my_dict[" SizeZ "])
+            size_c = int(my_dict[" SizeC "])
+
+            try:
+                Image.z_step = float(my_dict['Z incrementValue '])
+            except KeyError:
+                print("Could not get z step size. Will put default 0.2")
+                Image.z_step = 0.2
+            dim_order = my_dict[" DimensionOrder "]
+
+
         Image.data = tif.asarray()
 
         # This is legacy code to handle tif dimension issues
 
-        # if data is None:
-        #     print("ATTENTION: NORMAL READING OF TIFF FAILED! RESORT TO BASIC! ASSUME 1 TIME POINT & 1 CHANNEL!")
-        #     data = io.imread(file_dir, plugin='pil')
-        #
-        #     dim_order = 'XYCZT'
-        #
-        #     size_t = 1
-        #     size_z = data.shape[0]
-        #     size_c = 1
-        #
-        #     z_step = 0.2
 
         ndim = 2 if size_z == 1 else 3
         # Make standardized array with all dimensions
@@ -197,9 +182,7 @@ class Image():
             print("Could not get z step size. Will put default 0.2")
             Image.z_step = 0.2
 
-        print("1")
         if dim_order == 'XYCZT':
-            print(size_x, size_y, size_c, size_z, size_t)
             data = np.zeros((size_x, size_y, size_c, size_z, size_t))
             for i_z in range(0, size_z):
                 for i_t in range(0, size_t):
@@ -211,7 +194,6 @@ class Image():
                         data[:, :, :, i_z, i_t] = interm_data
         else:
             raise "Dim order is NOT XYZCT"
-        print("2")
 
         #flowdec needs a re-scale of the vsi data (vsi comes with values between 0 and 1)
         #here the re-scale is done up to the uint16 values
@@ -247,7 +229,7 @@ def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
         sigma = [z_sigma, sigma, sigma]
 
     size = image.shape
-    size = [min([100, x]) for x in size]
+    size = [min([50, x]) for x in size]
 
     # If even size dimensions crop to have a center pixel
     kernel = {'kernel_array': np.zeros(size, dtype=float),
@@ -281,7 +263,6 @@ def run_deconvolution(data_c, params) :
     overflow the GPU memory
     """
     
-
     EMPIRICAL_LIM_10G=2300*2300*7 #pixels 
     CURRENT_GPUMEM_GB=GPUMEM[0]/953.7 #conversion from mebibytes to GB
 
@@ -291,14 +272,45 @@ def run_deconvolution(data_c, params) :
     ALLOWED_NB_PX=EMPIRICAL_LIM_10G*CURRENT_GPUMEM_GB/10.
 
     #How many z-slices fit in the allowed nb of px ?
-
     NZ,NY,NX=data_c.shape
     Nslice=NX*NY
-    NZ_per_cycle=ALLOWED_NB_PX//Nslice
-    
-    
-    #richardson_lucy(data_c, params=params)
-    return NX
+    NZ_per_cycle=min(7,int(ALLOWED_NB_PX//Nslice))
+    buffer= NZ_per_cycle//2 #in number of z-slices
+
+    #NZ_per_cycle needs to be uneven because we are going to deconvolve for the central
+    #slice, the rest will be discarded
+    if NZ_per_cycle%2==0 :
+        NZ_per_cycle+=1
+
+    params.kernel=make_kernel(image=data_c, sigma=params.sigma, z_step=params.z_step)
+    reference_kernel=params.kernel['kernel_array']
+    output=np.empty_like(data_c)
+    data_c = prepare_decon(data_c, background='median', destripe_zones=get_filter_zone)
+    if NZ<=NZ_per_cycle :
+        params.kernel['kernel_array']=reference_kernel
+        output=richardson_lucy(data_c, params=params)
+    else:
+
+        z1=0
+        z2=NZ_per_cycle
+        i=0
+        while z2<=NZ:
+            params.kernel["kernel_array"]=reference_kernel[z1:z2,:,:]
+
+            image = data_c[z1:z2,:,:]
+            decon_result = richardson_lucy(image, params=params) 
+            output[z1+buffer*(i>0):z2-buffer,:,:]=decon_result[0+buffer*(i>0):NZ_per_cycle-buffer ,:,:]
+                
+            i+=1
+            z1=i*NZ_per_cycle-i*2*buffer
+            z2=z1+NZ_per_cycle
+
+        z1=NZ-NZ_per_cycle
+        params.kernel["kernel_array"]=reference_kernel[z1:,:,:]
+        decon_result = richardson_lucy(data_c[z1:,:,:], params=params)
+        output[z1+buffer:,:,:] = decon_result[0+buffer:,:,:]
+
+    return output
 
 def decon_ome_stack(file_dir, background):
     """
@@ -318,37 +330,17 @@ def decon_ome_stack(file_dir, background):
     elif file_dir.split('.')[-1] == "vsi":
         Img.read_vsi(file_dir)
 
-    # Make data odd shaped
-    #original_size_data = Img.data.shape
-    #pad = tuple(np.zeros((5, 2), int))
-    #crop = tuple(np.zeros((5, 2), int))
-
-    #if Img.data.shape[1] % 2 == 0:
-    #    pad_here = tuple(np.zeros((5, 2), int))
-    #    pad_here[1][1] = 1
-    #    Img.data = np.pad(Img.data, pad)
-    #for dim in [3, 4]:
-    #    if Img.data.shape[dim] % 2 == 0:
-    #        pad[dim][1] = 1
-    #        crop[dim][1] = Img.data.shape[dim] - 1
-    #    else:
-    #        crop[dim][1] = Img.data.shape[dim]
-    #Img.data = Img.data[:, :, :, :crop[3][1], :crop[4][1]]
 
     # start of the deconvolution loop
     decon = np.empty_like(Img.data)
-    #print('3')
 
-    for timepoint in tqdm(range(Img.size_t)):
+    for timepoint in range(Img.size_t):
 
         data_t = Img.data[timepoint, :, :, :, :]
         data_c_iterable = get_data_c(data_t, Img.size_c, Img.size_z)
-        for channel, data_c in data_c_iterable:
+        for channel, data_c in tqdm(data_c_iterable):
 
-            params.kernel = make_kernel(image=data_c, sigma=params.sigma, z_step=params.z_step)
-
-            #decon[timepoint, :, channel, :, :] = run_deconvolution() richardson_lucy(data_c, params=params)
-            A=run_deconvolution( data_c, params)
+            decon[timepoint, :, channel, :, :] = run_deconvolution(data_c, params) 
 
     # Crop the data back if we padded it
     #if original_size_data != decon.shape:
