@@ -81,10 +81,10 @@ class Image():
     def read_tiff(self, file_dir: posixpath) -> None:
         tif = tifffile.TiffFile(file_dir)
         Image.metadata = tif.imagej_metadata
-
+        
         if tif.ome_metadata is not None :
             my_dict = xmltodict.parse(tif.ome_metadata, force_list={'Plane'})
-
+            
             size_t = int(my_dict['OME']['Image']["Pixels"]["@SizeT"])
             size_z = int(my_dict['OME']['Image']["Pixels"]["@SizeZ"])
             size_c = int(my_dict['OME']['Image']["Pixels"]["@SizeC"])
@@ -180,7 +180,12 @@ class Image():
             data = np.zeros((size_x, size_y, size_c, size_z, size_t))
             for i_z in range(0, size_z):
                 for i_t in range(0, size_t):
-                    data[:, :, :, i_z, i_t] = vsi.read(series='0', z=i_z, t=i_t)
+                    interm_data=vsi.read(series='0', z=i_z, t=i_t)
+                    if len(interm_data.shape) == 2:
+                        interm_data=np.expand_dims(interm_data, axis=-1)
+                        data[:, :, :, i_z, i_t] = interm_data
+                    else :
+                        data[:, :, :, i_z, i_t] = interm_data
         else:
             raise "Dim order is NOT XYZCT"
 
