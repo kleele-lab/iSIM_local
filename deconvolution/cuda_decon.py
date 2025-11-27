@@ -12,6 +12,8 @@ import os
 import javabridge as jb
 import bioformats as bf
 
+from prepare import prepare_decon, get_filter_zone
+
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 
@@ -80,20 +82,40 @@ class Image():
         tif = tifffile.TiffFile(file_dir)
         Image.metadata = tif.imagej_metadata
 
-        my_dict = xmltodict.parse(tif.ome_metadata, force_list={'Plane'})
-        size_t = int(my_dict['OME']['Image']["Pixels"]["@SizeT"])
-        size_z = int(my_dict['OME']['Image']["Pixels"]["@SizeZ"])
-        size_c = int(my_dict['OME']['Image']["Pixels"]["@SizeC"])
+        if tif.ome_metadata is not None :
+            my_dict = xmltodict.parse(tif.ome_metadata, force_list={'Plane'})
 
-        try:
-            Image.z_step = float(my_dict['OME']['Image']["Pixels"]['@PhysicalSizeZ'])
-        except KeyError:
-            print("Could not get z step size. Will put default 0.2")
-            Image.z_step = 0.2
+            size_t = int(my_dict['OME']['Image']["Pixels"]["@SizeT"])
+            size_z = int(my_dict['OME']['Image']["Pixels"]["@SizeZ"])
+            size_c = int(my_dict['OME']['Image']["Pixels"]["@SizeC"])
+            try:
+                Image.z_step = float(my_dict['OME']['Image']["Pixels"]['@PhysicalSizeZ'])
+            except KeyError:
+                print("Could not get z step size. Will put default 0.2")
+                Image.z_step = 0.2
 
         # 'XYCZT' or 'XYZCT' ?
-        dim_order = my_dict['OME']['Image']["Pixels"]["@DimensionOrder"]
+            dim_order = my_dict['OME']['Image']["Pixels"]["@DimensionOrder"]
+        else :
+            metadata_list=Image.metadata['Info'].split('\n')
+            metadata_list = filter(None, metadata_list)
+            my_dict=dict(i.split(sep='=',maxsplit=1) for i in metadata_list)
+
+            size_t = int(my_dict[" SizeT "])
+            size_z = int(my_dict[" SizeZ "])
+            size_c = int(my_dict[" SizeC "])
+
+            try:
+                Image.z_step = float(my_dict['Z incrementValue '])
+            except KeyError:
+                print("Could not get z step size. Will put default 0.2")
+                Image.z_step = 0.2
+            dim_order = my_dict[" DimensionOrder "]
+
+
         Image.data = tif.asarray()
+
+        # This is legacy code to handle tif dimension issues
 
 
         ndim = 2 if size_z == 1 else 3
@@ -126,6 +148,7 @@ class Image():
         print("Sizes, t, z, and c : ", size_t, size_z, size_c)
         print("Dim_order in the original file : ", dim_order)
         print("New shape of data going into decon", Image.data.shape, "\n")
+
 
     def read_vsi(self, file_dir: posixpath) -> None:
 
