@@ -15,7 +15,6 @@ import bioformats as bf
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
 
-# os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = 'platform'
 def _init_logger():
     """This is so that Javabridge doesn't spill out a lot of DEBUG messages
     during runtime.
@@ -49,26 +48,6 @@ class Params():
     kernel = None  # to be initialized
     algo = None  # to be initialized
 
-
-# def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
-#     """Make a gaussian kernel that fits the psf of the microscope"""
-#     if image.ndim == 3:
-#         z_sigma = 0.48 / z_step
-#         sigma = [z_sigma, sigma, sigma]
-#         print("In make_kernel, 3D image detected, sigma: ", sigma)
-#
-#     size = image.shape
-#     size = [min([100, x]) for x in size]
-#
-#     # If even size dimensions crop to have a center pixel
-#     kernel = {'kernel': np.zeros(size, dtype=float),
-#               'sigma': sigma}
-#     kernel['kernel'][tuple(np.array(kernel['kernel'].shape) // 2)] = 1
-#     kernel['kernel'] = ndimage.gaussian_filter(kernel['kernel'], sigma=sigma)
-#
-#     kernel['kernel'][kernel['kernel'] < 1e-6 * np.max(kernel['kernel'])] = 0
-#     kernel['kernel'] = np.divide(kernel['kernel'], np.sum(kernel['kernel'])).astype(np.float32)
-#     return kernel
 
 
 def richardson_lucy(image, params=None):
@@ -116,19 +95,6 @@ class Image():
         dim_order = my_dict['OME']['Image']["Pixels"]["@DimensionOrder"]
         Image.data = tif.asarray()
 
-        # This is legacy code to handle tif dimension issues
-
-        # if data is None:
-        #     print("ATTENTION: NORMAL READING OF TIFF FAILED! RESORT TO BASIC! ASSUME 1 TIME POINT & 1 CHANNEL!")
-        #     data = io.imread(file_dir, plugin='pil')
-        #
-        #     dim_order = 'XYCZT'
-        #
-        #     size_t = 1
-        #     size_z = data.shape[0]
-        #     size_c = 1
-        #
-        #     z_step = 0.2
 
         ndim = 2 if size_z == 1 else 3
         # Make standardized array with all dimensions
@@ -274,23 +240,6 @@ def decon_ome_stack(file_dir, background):
     elif file_dir.split('.')[-1] == "vsi":
         Img.read_vsi(file_dir)
 
-    # Make data odd shaped
-    #original_size_data = Img.data.shape
-    #pad = tuple(np.zeros((5, 2), int))
-    #crop = tuple(np.zeros((5, 2), int))
-
-    #if Img.data.shape[1] % 2 == 0:
-    #    pad_here = tuple(np.zeros((5, 2), int))
-    #    pad_here[1][1] = 1
-    #    Img.data = np.pad(Img.data, pad)
-    #for dim in [3, 4]:
-    #    if Img.data.shape[dim] % 2 == 0:
-    #        pad[dim][1] = 1
-    #        crop[dim][1] = Img.data.shape[dim] - 1
-    #    else:
-    #        crop[dim][1] = Img.data.shape[dim]
-    #Img.data = Img.data[:, :, :, :crop[3][1], :crop[4][1]]
-
     # start of the deconvolution loop
     decon = np.empty_like(Img.data)
 
@@ -302,12 +251,6 @@ def decon_ome_stack(file_dir, background):
 
             decon[timepoint, :, channel, :, :] = richardson_lucy(data_c, params=params)
 
-
-    # Crop the data back if we padded it
-    #if original_size_data != decon.shape:
-    #    decon = decon[:, :original_size_data[1], :, :, :].astype(np.uint16)
-    #if original_size_data != decon.shape:
-    #    decon = np.pad(decon, pad).astype(np.uint16)
     
     decon=decon.astype(np.uint16)
 
