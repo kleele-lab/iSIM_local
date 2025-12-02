@@ -31,7 +31,7 @@ def list_files(dir):
 #     'background': "median",
 # }
 
-background = "median"
+background = None #change to "median" (or option below) to trigger the median substraction before the deconvolution
 
 # background      0-3: otsu with this scaling factor
 # background      > 3: fixed value
