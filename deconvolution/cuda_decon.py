@@ -236,7 +236,7 @@ def make_kernel(image: np.ndarray, sigma=1.67, z_step=0.2):
     return kernel
 
 
-def get_data_c(data_t, size_c, size_z):
+def get_data_c(data_t, size_c, size_z, params):
     """
     Ensures a progressive supply of images to the deconvolution routine.
 
@@ -245,8 +245,10 @@ def get_data_c(data_t, size_c, size_z):
 
     for channel in range(size_c):
         data_c = data_t[:, channel, :, :]
-        # if size_z == 1:
-        #     data_c = data_c[0, :, :]
+
+        print("========================", params.background)
+        if params.background is not None :
+            data_c = prepare_decon(data_c, background=params.background, destripe_zones=get_filter_zone)
 
         yield channel, data_c
 
@@ -273,7 +275,8 @@ def decon_ome_stack(file_dir, background):
 
     for timepoint in tqdm(range(Img.size_t)):
         data_t = Img.data[timepoint, :, :, :, :]
-        data_c_iterable = get_data_c(data_t, Img.size_c, Img.size_z)
+        data_c_iterable = get_data_c(data_t, Img.size_c, Img.size_z,params)
+        
         for channel, data_c in data_c_iterable:
             params.kernel = make_kernel(image=data_c, sigma=params.sigma, z_step=params.z_step)
 
