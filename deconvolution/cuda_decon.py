@@ -46,7 +46,7 @@ class Params():
     """ Class for storing parameters to be used in deconvolution"""
     sigma: float = 3.9 / 2.335
     z_step: float = 0.2
-    background: Union[int, str] = 'median'
+    background: Union[int, str] = None #default value
     kernel = None  # to be initialized
     algo = None  # to be initialized
 
@@ -246,7 +246,6 @@ def get_data_c(data_t, size_c, size_z, params):
     for channel in range(size_c):
         data_c = data_t[:, channel, :, :]
 
-        print("========================", params.background)
         if params.background is not None :
             data_c = prepare_decon(data_c, background=params.background, destripe_zones=get_filter_zone)
 
