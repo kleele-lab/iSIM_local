@@ -21,6 +21,8 @@ $pip install -r ./deconvolution/requirements.txt
 $pip install python-bioformats
 ```
 You will get an error related to the numpy version. Please ignore it : the installation will be complete and the deconvolution process will happen without issue.
+If you wish to run the deconvolution only on CPU, please run the same steps but replace ./deconvolution/requirements.txt by ./deconvolution/requirements_no_cuda.txt. If you create a new virtual environment with a different name, please adjust the name of the virtual environment activated in the run_image_decon.sh file and run_folder_decon.sh files, otherwise you will get an error in your deconvolution jobs.
+
 Test the installation with an interactive job on Euler:
 
 ```commandline
